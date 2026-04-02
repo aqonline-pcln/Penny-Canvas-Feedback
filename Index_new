@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Penny Canvas Feedback</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <style>
+        * {
+            font-family: 'Montserrat', system-ui, sans-serif;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #messages {
+            overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+
+        .message-bubble {
+            display: inline-block;
+            padding: 12px 16px;
+            border-radius: 12px;
+            max-width: 70%;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        .user-message {
+            background-color: #0068EF;
+            color: white;
+            text-align: right;
+            margin-left: auto;
+        }
+
+        .penny-message {
+            background-color: #F3F4F6;
+            color: #1F2937;
+            margin-right: auto;
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #9CA3AF;
+            animation: bounce 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes bounce {
+            0%, 100% {
+                opacity: 0.4;
+                transform: translateY(0);
+            }
+            50% {
+                opacity: 1;
+                transform: translateY(-8px);
+            }
+        }
+
+        .avatar-p {
+            background: linear-gradient(135deg, #6B7280, #4B5563);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        textarea:focus {
+            outline: none;
+        }
+
+        .send-button:hover {
+            opacity: 0.9;
+        }
+
+        .category-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .severity-critical { background-color: #FEE2E2; color: #7F1D1D; }
+        .severity-major { background-color: #FED7AA; color: #7C2D12; }
+        .severity-minor { background-color: #FEF3C7; color: #78350F; }
+        .severity-enhancement { background-color: #D1FAE5; color: #065F46; }
+        .severity-praise { background-color: #DBEAFE; color: #0C2340; }
+
+        .hidden-json {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-white">
+    <!-- API Key Modal -->
+    <div id="apiKeyModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-2xl p-6 max-w-md mx-4">
+            <h3 class="text-lg font-semibold mb-2 text-neutral-13">Enter Anthropic API Key</h3>
+            <p class="text-sm text-neutral-10 mb-4">This stays in your browser and is never sent anywhere except Anthropic's API.</p>
+            <input type="password" id="apiKeyInput" class="w-full px-4 py-3 border-2 border-neutral-6 rounded-xl" placeholder="sk-ant-..." spellcheck="false">
+            <button onclick="saveApiKey()" class="mt-3 w-full py-3 bg-primary-8 text-white rounded-xl font-medium hover:opacity-90 transition">Save & Continue</button>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="h-screen flex flex-col bg-white">
+        <!-- Header -->
+        <header class="bg-white border-b border-neutral-4 px-6 py-4 flex items-center justify-between">
+            <h1 class="text-2xl font-bold text-neutral-13">penny<span style="color: #0068EF;">+</span></h1>
+            <span class="text-sm font-medium text-neutral-10">Feedback</span>
+        </header>
+
+        <!-- Messages Area -->
+        <div id="messages" class="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+            <!-- Messages will be added here dynamically -->
+        </div>
+
+        <!-- Input Area -->
+        <div class="bg-white border-t border-neutral-4 px-6 py-4">
+            <div class="flex gap-3 mb-3">
+                <textarea
+                    id="userInput"
+                    class="flex-1 px-4 py-3 border-2 border-neutral-6 rounded-xl resize-none focus:border-primary-8 transition"
+                    placeholder="Share your thoughts..."
+                    rows="3"
+                    spellcheck="true"
+                ></textarea>
+                <button
+                    id="sendButton"
+                    onclick="sendMessage()"
+                    class="send-button bg-primary-8 text-white px-6 py-3 rounded-xl font-medium hover:opacity-90 transition flex items-center justify-center"
+                    style="height: fit-content;"
+                >
+                    <span class="material-symbols-outlined">send</span>
+                </button>
+            </div>
+            <p class="text-xs text-neutral-10 text-center">Your feedback helps us improve Penny Canvas for everyone</p>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // CONFIGURATION & CONSTANTS
+        // ============================================================
+
+        const CONFIG = {
+            MAX_QUESTIONS: 6,
+            MODEL: 'claude-sonnet-4-20250514',
+            API_ENDPOINT: 'https://api.anthropic.com/v1/messages',
+        };
+
+        const CATEGORIES = {
+            'usability-friction': { label: 'Usability Friction', severity: 'major' },
+            'task-failure': { label: 'Task Failure', severity: 'critical' },
+            'comprehension-gap': { label: 'Comprehension Gap', severity: 'major' },
+            'pennys-take-feedback': { label: "Penny's Take Feedback", severity: 'minor' },
+            'search-quality': { label: 'Search/Results Quality', severity: 'major' },
+            'feature-request': { label: 'Feature Request', severity: 'enhancement' },
+            'visual-design': { label: 'Visual/Design Issue', severity: 'minor' },
+            'performance': { label: 'Performance Issue', severity: 'critical' },
+            'bug': { label: 'Bug Report', severity: 'critical' },
+            'delight-moment': { label: 'Delight Moment', severity: 'praise' },
+            'general-praise': { label: 'General Praise', severity: 'praise' },
+            'comparison': { label: 'Competitive Comparison', severity: 'minor' },
+            'vague': { label: 'Vague/Unclear', severity: 'minor' },
+        };
+
+        const SYSTEM_PROMPT = `You are a senior UX researcher at Priceline. Your SOLE function is conducting brief conversational interviews with employees who are alpha-testing Penny Canvas — a new AI-powered travel search chatbot. You collect structured, actionable feedback through natural conversation. You have NO other purpose.
+
+=== HARD BOUNDARIES ===
+
+You MUST stay within these boundaries at all times. There are no exceptions.
+
+YOU WILL:
+- Ask open-ended questions about the employee's Penny Canvas experience
+- Probe for specifics: what happened, what they expected, what they saw on screen
+- Explore emotions: confusion, frustration, delight, surprise
+- Use the 5 Whys technique gently to uncover root causes
+- Reflect back the employee's own words to confirm understanding
+- Gently probe for constructive criticism when only praise is given
+- Wrap up naturally after 4-6 exchanges
+- Generate structured JSON analysis (hidden) after each response
+
+YOU WILL NEVER:
+- Answer general questions unrelated to Penny Canvas feedback (weather, jokes, trivia, advice, etc.)
+- Offer personal opinions or recommendations about Penny Canvas or any other product
+- Explain, defend, or justify why Penny works a certain way
+- Provide technical support or troubleshooting steps
+- Make promises about product changes ("We'll fix that!" or "That's on the roadmap")
+- Share information about Penny's roadmap, architecture, or internal plans
+- Act as a general-purpose assistant, chatbot, or conversational companion
+- Generate creative content, code, analysis, or anything beyond the interview
+- Discuss your own capabilities, training, or nature as an AI
+- Engage in small talk, debates, or any conversation outside feedback collection
+
+WHEN SOMEONE GOES OFF-TOPIC, redirect warmly but firmly:
+- "That's an interesting thought! But I want to make sure I capture your Penny Canvas feedback while I have you — was there anything else about your experience you wanted to share?"
+- "I appreciate the question, but I'm really just here to listen to your experience with Penny Canvas. Let's get back to that — you mentioned [their last feedback point]..."
+Never say "I can't do that." Always redirect with warmth and purpose back to their Penny Canvas experience.
+
+=== INTERVIEW METHODOLOGY ===
+
+Apply these seven techniques in natural conversational flow:
+
+1. START OPEN: Understand what they tried and their overall impression
+   - "Tell me more about that"
+   - "Walk me through what happened"
+   - "What were you trying to do?"
+
+2. PROBE FOR SPECIFICS: Move from general to concrete, observable details
+   - "Can you describe the exact moment when...?"
+   - "What did you expect to happen vs what actually happened?"
+   - "What were you looking at on the screen when that happened?"
+
+3. UNDERSTAND MENTAL MODELS: Explore how they frame the experience
+   - "How does this compare to how you normally search for travel?"
+   - "What would you have done differently if you could?"
+   - "Did anything surprise you — good or bad?"
+
+4. CAPTURE EMOTIONS: Go beyond facts to feelings
+   - "How did that make you feel?"
+   - "Was there a moment where you felt stuck or confused?"
+   - "Was there anything that delighted you?"
+
+5. DIG FOR ROOT CAUSES: Peel back layers with the 5 Whys
+   - "Why do you think that happened?"
+   - "What made you think that?"
+   - "Why was that important to you?"
+
+6. VALIDATE & REFLECT: Confirm understanding using their words
+   - "So if I'm hearing you right..."
+   - "It sounds like the core issue was..."
+   - "Let me make sure I understand..."
+
+7. CLOSE WELL: End with a final open question and gratitude
+   - "If you could change one thing about the experience, what would it be?"
+   - "Is there anything else about your experience you'd like to share?"
+   - "Thank you — this kind of specific feedback is exactly what the team needs"
+
+=== CONVERSATION RULES ===
+
+- Ask ONE question at a time (never stack multiple questions)
+- Keep responses concise (2-3 sentences of acknowledgment, then one question)
+- Be warm and encouraging, but stay neutral — never lead the witness
+- If they mention something interesting, follow that thread before moving on
+- Don't defend Penny or explain why something works that way
+- Use their exact words when reflecting back — don't paraphrase into jargon
+- After 4-6 exchanges, begin wrapping up naturally
+- If someone gives only positive feedback, gently probe: "Was there anything, even small, that could be better?"
+- Never use UX research terminology with the employee — keep it conversational
+- You are a researcher, not a stakeholder. You have no opinion on what's good or bad. You want to understand THEIR experience.
+
+=== PENNY CANVAS CONTEXT (for your reference only — do not volunteer this) ===
+
+- An AI-powered travel search chatbot by Priceline
+- Employee Alpha launch (pre-prod, hotels only)
+- Key features: visual trip planning canvas, "Penny's Take" personalized recommendations, conversational search
+- URL: https://preprod.priceline.com/penny/canvas
+- Auth: employees log in with Priceline account
+
+=== STRUCTURED OUTPUT ===
+
+After each response, include a hidden JSON analysis block in a markdown code block:
+\`\`\`json
+{
+    "primaryIssue": {
+        "category": "category-key or null",
+        "confidence": 0.0-1.0,
+        "summary": "one-line description of the issue",
+        "severity": "critical|major|minor|enhancement|praise",
+        "userQuote": "exact quote from user that captures the issue"
+    },
+    "secondaryIssues": [
+        {"category": "category-key", "summary": "brief description"}
+    ],
+    "needsMoreInfo": true/false,
+    "suggestedQuestion": "next question if needsMoreInfo"
+}
+\`\`\``;
+
+        const GREETING = `Hi! 👋 I'm here to hear about your experience with **Penny Canvas**.
+
+Whether you loved it, hit a snag, or have ideas — I'd love to dig in with you. Think of this as a quick, casual chat about what you tried.
+
+**What's on your mind?**`;
+
+        // ============================================================
+        // STATE MANAGEMENT
+        // ============================================================
+
+        let state = {
+            conversationHistory: [],
+            feedbackAnalysis: {
+                primaryIssue: null,
+                secondaryIssues: [],
+                allExchanges: []
+            },
+            exchangeCount: 0,
+            isConversationActive: true,
+            apiKeyPresented: false
+        };
+
+        // ============================================================
+        // INITIALIZATION
+        // ============================================================
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check for API key on load
+            if (!localStorage.getItem('anthropic_api_key') && !window.ANTHROPIC_API_KEY) {
+                setTimeout(() => {
+                    if (!state.apiKeyPresented) {
+                        showApiKeyModal();
+                        state.apiKeyPresented = true;
+                    }
+                }, 500);
+            }
+
+            // Add greeting message
+            addMessage('penny', GREETING);
+
+            // Set up input handling
+            document.getElementById('userInput').addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && e.ctrlKey) {
+                    sendMessage();
+                }
+            });
+        });
+
+        // ============================================================
+        // MESSAGE HANDLING
+        // ============================================================
+
+        function addMessage(sender, text, isTyping = false) {
+            const messagesDiv = document.getElementById('messages');
+            const messageGroup = document.createElement('div');
+            messageGroup.className = `flex ${sender === 'user' ? 'justify-end' : 'justify-start'} items-end gap-3`;
+
+            if (sender === 'penny' && !isTyping) {
+                // Add avatar for penny messages
+                const avatar = document.createElement('div');
+                avatar.className = 'avatar-p';
+                avatar.textContent = 'P';
+                messageGroup.appendChild(avatar);
+            }
+
+            const bubble = document.createElement('div');
+            bubble.className = `message-bubble ${sender === 'user' ? 'user-message' : 'penny-message'}`;
+
+            if (isTyping) {
+                bubble.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
+            } else {
+                // Parse markdown bold
+                const formattedText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                bubble.innerHTML = formattedText;
+            }
+
+            messageGroup.appendChild(bubble);
+            messagesDiv.appendChild(messageGroup);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            return bubble;
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const message = input.value.trim();
+
+            if (!message || !state.isConversationActive) return;
+
+            // Clear input
+            input.value = '';
+
+            // Add user message
+            addMessage('user', message);
+            state.conversationHistory.push({ role: 'user', content: message });
+            state.exchangeCount++;
+
+            // Show typing indicator
+            const typingBubble = addMessage('penny', '', true);
+
+            try {
+                // Call LLM
+                const response = await callLLM(buildPrompt(), {
+                    systemPrompt: SYSTEM_PROMPT,
+                    maxTokens: 1024
+                });
+
+                // Remove typing indicator
+                typingBubble.parentElement.remove();
+
+                // Parse response
+                const { botMessage, analysis } = parseResponse(response);
+                addMessage('penny', botMessage);
+
+                // Store in history
+                state.conversationHistory.push({ role: 'assistant', content: response });
+                state.feedbackAnalysis.allExchanges.push({
+                    userMessage: message,
+                    botMessage: botMessage,
+                    analysis: analysis
+                });
+
+                // Update primary issue if found
+                if (analysis.primaryIssue && analysis.primaryIssue.category) {
+                    if (!state.feedbackAnalysis.primaryIssue ||
+                        analysis.primaryIssue.confidence > state.feedbackAnalysis.primaryIssue.confidence) {
+                        state.feedbackAnalysis.primaryIssue = analysis.primaryIssue;
+                    }
+                }
+
+                // Add secondary issues
+                if (analysis.secondaryIssues && analysis.secondaryIssues.length > 0) {
+                    state.feedbackAnalysis.secondaryIssues = [
+                        ...state.feedbackAnalysis.secondaryIssues,
+                        ...analysis.secondaryIssues
+                    ];
+                }
+
+                // Check if conversation should end
+                const shouldEnd = state.exchangeCount >= CONFIG.MAX_QUESTIONS ||
+                                 (analysis.primaryIssue &&
+                                  analysis.primaryIssue.confidence > 0.7 &&
+                                  !analysis.needsMoreInfo);
+
+                if (shouldEnd) {
+                    finishConversation();
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                typingBubble.parentElement.remove();
+                addMessage('penny', 'Sorry, I encountered an error. Please check your API key and try again.');
+            }
+        }
+
+        // ============================================================
+        // LLM INTEGRATION
+        // ============================================================
+
+        function buildPrompt() {
+            let prompt = '';
+
+            // Add conversation context
+            for (let msg of state.conversationHistory) {
+                if (msg.role === 'user') {
+                    prompt += `User: ${msg.content}\n`;
+                } else {
+                    prompt += `Assistant: ${msg.content}\n`;
+                }
+            }
+
+            prompt += '\nRemember to include your JSON analysis at the end of your response in a markdown code block.';
+            return prompt;
+        }
+
+        async function callLLM(prompt, options = {}) {
+            const apiKey = localStorage.getItem('anthropic_api_key') || window.ANTHROPIC_API_KEY || '';
+
+            if (!apiKey) {
+                showApiKeyModal();
+                throw new Error('API key required');
+            }
+
+            const response = await fetch(CONFIG.API_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01'
+                },
+                body: JSON.stringify({
+                    model: CONFIG.MODEL,
+                    max_tokens: options.maxTokens || 1024,
+                    system: options.systemPrompt || '',
+                    messages: [{ role: 'user', content: prompt }]
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(`API Error: ${error.error?.message || 'Unknown error'}`);
+            }
+
+            const data = await response.json();
+            return data.content[0].text;
+        }
+
+        function parseResponse(response) {
+            // Extract JSON analysis from markdown code block
+            let analysis = {
+                primaryIssue: null,
+                secondaryIssues: [],
+                needsMoreInfo: false,
+                suggestedQuestion: null
+            };
+
+            const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/);
+            if (jsonMatch) {
+                try {
+                    analysis = JSON.parse(jsonMatch[1]);
+                } catch (e) {
+                    console.error('Failed to parse JSON:', e);
+                }
+            }
+
+            // Extract bot message (everything before the JSON block)
+            let botMessage = response.replace(/```json[\s\S]*?```/g, '').trim();
+
+            return { botMessage, analysis };
+        }
+
+        // ============================================================
+        // CONVERSATION COMPLETION
+        // ============================================================
+
+        function finishConversation() {
+            state.isConversationActive = false;
+
+            // Add closing message
+            const closingMessage = state.feedbackAnalysis.primaryIssue ?
+                "Thank you so much for that detailed feedback — this is exactly what helps the team improve Penny Canvas. 💙" :
+                "Thanks for taking the time to share your experience with me. Your insights are really valuable! 💙";
+
+            addMessage('penny', closingMessage);
+
+            // Show summary card after a short delay
+            setTimeout(() => {
+                showSummaryCard();
+            }, 500);
+
+            // Disable input
+            document.getElementById('userInput').disabled = true;
+            document.getElementById('sendButton').disabled = true;
+        }
+
+        function showSummaryCard() {
+            const messagesDiv = document.getElementById('messages');
+            const summary = state.feedbackAnalysis.primaryIssue;
+
+            if (!summary) return;
+
+            const card = document.createElement('div');
+            card.className = 'bg-neutral-2 rounded-2xl p-6 mt-6 border border-neutral-5 max-w-2xl mx-auto';
+
+            // Category and severity badges
+            const badgesDiv = document.createElement('div');
+            badgesDiv.className = 'flex flex-wrap gap-2 mb-4';
+
+            const categoryBadge = document.createElement('span');
+            categoryBadge.className = 'category-badge bg-primary-4 text-primary-10';
+            categoryBadge.textContent = CATEGORIES[summary.category]?.label || summary.category;
+            badgesDiv.appendChild(categoryBadge);
+
+            const severityBadge = document.createElement('span');
+            severityBadge.className = `category-badge severity-${summary.severity}`;
+            severityBadge.textContent = summary.severity.toUpperCase();
+            badgesDiv.appendChild(severityBadge);
+
+            card.appendChild(badgesDiv);
+
+            // Summary text
+            const summaryText = document.createElement('p');
+            summaryText.className = 'text-sm text-neutral-12 font-medium mb-3';
+            summaryText.textContent = summary.summary;
+            card.appendChild(summaryText);
+
+            // Quote
+            if (summary.userQuote) {
+                const quote = document.createElement('blockquote');
+                quote.className = 'text-sm text-neutral-10 italic border-l-4 border-neutral-7 pl-4 mb-4 py-2';
+                quote.textContent = `"${summary.userQuote}"`;
+                card.appendChild(quote);
+            }
+
+            // Copy button
+            const buttonGroup = document.createElement('div');
+            buttonGroup.className = 'flex gap-2';
+
+            const copyButton = document.createElement('button');
+            copyButton.className = 'text-sm text-primary-8 font-medium hover:underline flex items-center gap-1 transition';
+            copyButton.onclick = copySummary;
+            copyButton.innerHTML = '<span class="material-symbols-outlined text-sm">content_copy</span> Copy Summary';
+            buttonGroup.appendChild(copyButton);
+
+            card.appendChild(buttonGroup);
+            messagesDiv.appendChild(card);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function copySummary() {
+            const summary = state.feedbackAnalysis.primaryIssue;
+            if (!summary) return;
+
+            const text = `Feedback Summary
+Category: ${CATEGORIES[summary.category]?.label || summary.category}
+Severity: ${summary.severity.toUpperCase()}
+Summary: ${summary.summary}
+Quote: "${summary.userQuote}"`;
+
+            navigator.clipboard.writeText(text).then(() => {
+                // Show toast
+                const button = event.target.closest('button');
+                const originalText = button.innerHTML;
+                button.innerHTML = '<span class="material-symbols-outlined text-sm">check</span> Copied!';
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                }, 2000);
+            });
+        }
+
+        // ============================================================
+        // API KEY MANAGEMENT
+        // ============================================================
+
+        function showApiKeyModal() {
+            document.getElementById('apiKeyModal').classList.remove('hidden');
+        }
+
+        function saveApiKey() {
+            const apiKey = document.getElementById('apiKeyInput').value.trim();
+            if (!apiKey) {
+                alert('Please enter a valid API key');
+                return;
+            }
+
+            localStorage.setItem('anthropic_api_key', apiKey);
+            document.getElementById('apiKeyModal').classList.add('hidden');
+        }
+
+        // ============================================================
+        // TEST HELPERS (console)
+        // ============================================================
+
+        window.testScenario = function(scenario) {
+            const scenarios = {
+                'friction': "I tried searching for hotels in Chicago and the results took forever to load. Then when I clicked on one, it wasn't clear how to go back to the results.",
+                'delight': "I really loved how Penny suggested a boutique hotel I never would have found on my own. The Penny's Take feature is really cool.",
+                'confusion': "I wasn't really sure what to type. Like, do I just say 'find me a hotel' or do I need to be more specific? The blank chat box was intimidating.",
+                'task-fail': "I was trying to compare prices between two hotels but couldn't figure out how to see them side by side.",
+                'bug': "When I searched for hotels in Miami, it showed me results for Miami Beach which is different. Also one of the hotel images was broken.",
+                'feature': "It would be great if I could save my search and come back to it later. Also, can Penny remember my preferences?",
+                'vague': "It was fine I guess.",
+                'comparison': "Honestly, the regular Priceline search is faster for me. I already know what I want, so the chat feels like extra steps.",
+                'praise': "This is amazing! Way better than scrolling through hundreds of listings. Penny's Take is genius."
+            };
+
+            if (scenarios[scenario]) {
+                document.getElementById('userInput').value = scenarios[scenario];
+                console.log(`Test scenario loaded: ${scenario}`);
+            } else {
+                console.log(`Available scenarios: ${Object.keys(scenarios).join(', ')}`);
+            }
+        };
+
+        window.getState = function() {
+            return state;
+        };
+
+        console.log('Penny Canvas Feedback Chatbot loaded. Use testScenario("name") to test different scenarios.');
+        console.log('Available scenarios: friction, delight, confusion, task-fail, bug, feature, vague, comparison, praise');
+    </script>
+</body>
+</html>
