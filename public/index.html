@@ -134,19 +134,19 @@
 
         <!-- Input Area -->
         <div class="bg-white border-t border-neutral-4 px-6 py-4">
-            <div class="flex gap-3 mb-3">
+            <div class="flex items-end gap-3 mb-3">
                 <textarea
                     id="userInput"
                     class="flex-1 px-4 py-3 border-2 border-neutral-6 rounded-xl resize-none focus:border-primary-8 transition"
-                    placeholder="Share your thoughts..."
-                    rows="3"
+                    placeholder="Share your thoughts... (press Enter to send)"
+                    rows="2"
                     spellcheck="true"
                 ></textarea>
                 <button
                     id="sendButton"
                     onclick="sendMessage()"
-                    class="send-button bg-primary-8 text-white px-6 py-3 rounded-xl font-medium hover:opacity-90 transition flex items-center justify-center"
-                    style="height: fit-content;"
+                    class="send-button text-white rounded-xl font-medium hover:opacity-90 transition flex items-center justify-center flex-shrink-0"
+                    style="background-color: #0068EF; width: 48px; height: 48px;"
                 >
                     <span class="material-symbols-outlined">send</span>
                 </button>
@@ -326,7 +326,8 @@ Whether you loved it, hit a snag, or have ideas — I'd love to dig in with you.
 
             // Set up input handling
             document.getElementById('userInput').addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' && e.ctrlKey) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
                     sendMessage();
                 }
             });
