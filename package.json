@@ -1,0 +1,9 @@
+{
+  "name": "penny-canvas-feedback",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LLM-driven user research chatbot for Penny Canvas feedback collection",
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}
